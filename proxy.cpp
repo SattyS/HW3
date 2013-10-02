@@ -22,12 +22,64 @@ struct webPage {
     string webPageName;
     string hash;
     string webPageType;
+    string last_modified;
 
 };
 
 typedef struct webPage wP;
 
 std::list<wP> wP_List;
+
+void cacheClear(string hash){
+    //std::string f = fileNames[ind]; 
+    remove(hash.c_str());
+    cout << "File Deleted " << hash << endl; 
+}
+
+string checkHead(string hash, string fileName){
+    const int MAX_BUFFER = 2048;
+    bool found = false;
+    std:string lMD;
+    string cmd="HEAD HTTP/1.0 "; //http://www.ece.tamu.edu/~reddy/ee602_08.html";
+    cmd.append(fileName);
+    char buffer[MAX_BUFFER];
+    hash.append("_1");
+    FILE *stream = popen(cmd.c_str(), "r");
+    FILE *ostream = fopen(hash.c_str(),"ab+");
+    if (stream){
+       while (!feof(stream))
+       {
+            if (fgets(buffer, MAX_BUFFER, stream) != NULL)
+            {
+               fprintf(ostream, buffer);
+            }
+       }
+       rewind(ostream);
+       char *line;
+       size_t len = 0;
+       int read;
+       while(!feof(ostream)){
+            if((read = getline(&line, &len, ostream)) != -1){
+                string tempLine = line;
+                std::size_t pos = tempLine.find("Last-Modified:");
+                if(pos != std::string::npos){
+                    lMD = tempLine.substr(14);
+                    found = true;
+                    break;
+                }
+            }
+       }
+    }
+    if(found){
+        cout << "LMD " << lMD << endl;
+    }else{
+        lMD = "";
+    }
+    pclose(stream);
+    cacheClear(hash);
+    fclose(ostream);
+    return lMD;
+}
 
 string hash_str(const char* s)
 {
@@ -52,12 +104,6 @@ void printList(){
         std::cout<<wPTemp.webPageName<<endl;
         //std::cout<<wPTemp.webPageType<<endl;
     }
-}
-
-void cacheClear(string hash){
-    //std::string f = fileNames[ind]; 
-    remove(hash.c_str());
-    cout << "File Deleted " << hash << endl; 
 }
 int fileWrite(string hash,string fileName){    
     /*
@@ -95,9 +141,10 @@ int lRU(string text){
     if(wP_List.empty()){
         wPObj.webPageName = text;
         wPObj.hash = hash;
-        wP_List.push_front(wPObj);
         fileWrite(hash,text);
         cout << "File got using GET from server -- Send file to client" << endl;
+        wPObj.last_modified = checkHead(hash,text);
+        wP_List.push_front(wPObj);
         ret  = 1;
     }else{
         std::list<wP>::iterator list_iter = wP_List.begin();
@@ -112,6 +159,20 @@ int lRU(string text){
         }
         if(found){
             cout << "File already in cache -- Send file to client" << endl;
+            if(wPObj.last_modified.compare("") == 0){
+                fileWrite(hash,text);
+                cout << "Last modified date can't be determined from HEAD" << endl;
+                cout << "File got using GET from server -- Send file to client" << endl;
+            }else{
+                std::string lmLocal = checkHead(hash,text);
+                if(wPObj.last_modified.compare(lmLocal) != 0){
+                    fileWrite(hash,text);
+                    cout << "Last modified date has changed" << endl;
+                    cout << "File got using GET from server -- Send file to client" << endl;
+                }else{
+                    cout << "Last modified date has not changed - Send old file to client" << endl;
+                }
+            }
             if(i != 0){
                 // Check Timestamp and update (HEAD)
                 wP_List.erase(list_iter);
@@ -130,6 +191,7 @@ int lRU(string text){
             wP wPObjNew;
             wPObjNew.webPageName = text;
             wPObjNew.hash = hash;
+            wPObjNew.last_modified = checkHead(hash,text);
             wP_List.push_front(wPObjNew);
             fileWrite(hash,text);
             cout << "File got using GET from server -- Send file to client" << endl;
@@ -176,13 +238,16 @@ int main(int argc, char const *argv[])
     int i;
     int count = 0, ret;
     string links;
+
     cin >> i;
     for(int k = 0;k<i; k++){
         cout << "Enter links :";
         cin >>  links;
         lRU(links);
     }
-    //fileWrite("One.html");
+
+
+    //checkHead("2723130594","www.w3.org");
 
     return 0;
 }
