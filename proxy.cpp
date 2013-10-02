@@ -3,15 +3,24 @@
 #include <list>
 #include <stdlib.h>
 #include <fstream>
-#define MAX_SIZE 5
+#include <functional>
+#define MAX_SIZE 2
+
+
+#define A 54059 /* a prime */
+#define B 76963 /* another prime */
+#define C 86969 /* yet another prime */
+
 using namespace std;
 
-string fileNames[10] = {"One","Two","Three","Four","Five","Six","Seven","Eight","Nine","Ten"};
+
+
+//string fileNames[10] = {"One","Two","Three","Four","Five","Six","Seven","Eight","Nine","Ten"};
 
 struct webPage {
 
     string webPageName;
-    int index;
+    string hash;
     string webPageType;
 
 };
@@ -19,6 +28,20 @@ struct webPage {
 typedef struct webPage wP;
 
 std::list<wP> wP_List;
+
+string hash_str(const char* s)
+{
+   char buffer[50];
+   unsigned h = 31 /* also prime */;
+   while (*s) {
+     h = (h * A) ^ (s[0] * B);
+     s++;
+   }
+   sprintf (buffer, "%u", h);
+   std::string a  = buffer;
+   cout << a << endl;
+   return a; // or return h % C;
+}
 
 void printList(){
 
@@ -30,12 +53,13 @@ void printList(){
         //std::cout<<wPTemp.webPageType<<endl;
     }
 }
-void cacheClear(int ind){
-    std::string f = fileNames[ind]; 
-    remove(f.c_str());
-    cout << "File Deleted " << fileNames[ind] << endl; 
+
+void cacheClear(string hash){
+    //std::string f = fileNames[ind]; 
+    remove(hash.c_str());
+    cout << "File Deleted " << hash << endl; 
 }
-int fileWrite(int k,string fileName){    
+int fileWrite(string hash,string fileName){    
     /*
         ofstream f;
         f.open(fileName.c_str());
@@ -48,7 +72,7 @@ int fileWrite(int k,string fileName){
     cmd.append(fileName);
     char buffer[MAX_BUFFER];
     FILE *stream = popen(cmd.c_str(), "r");
-    FILE *ostream = fopen(fileNames[k].c_str(),"w");
+    FILE *ostream = fopen(hash.c_str(),"w");
     if (stream){
        while (!feof(stream))
        {
@@ -61,16 +85,18 @@ int fileWrite(int k,string fileName){
        fclose(ostream);
     }
 }
-int lRU(string text, int ind){
+int lRU(string text){
     int i=0;
     int ret = 0;
     bool found = false;
     wP wPObj;
+    string hash;
+    hash = hash_str(text.c_str());
     if(wP_List.empty()){
         wPObj.webPageName = text;
-        wPObj.index = ind;
+        wPObj.hash = hash;
         wP_List.push_front(wPObj);
-        fileWrite(ind,text);
+        fileWrite(hash,text);
         cout << "File got using GET from server -- Send file to client" << endl;
         ret  = 1;
     }else{
@@ -85,9 +111,9 @@ int lRU(string text, int ind){
             i++;
         }
         if(found){
+            cout << "File already in cache -- Send file to client" << endl;
             if(i != 0){
                 // Check Timestamp and update (HEAD)
-                cout << "File already in cache -- Send file to client" << endl;
                 wP_List.erase(list_iter);
                 wP_List.push_front(wPObj);
                 ret = 0;
@@ -98,14 +124,14 @@ int lRU(string text, int ind){
                 std::list<wP>::iterator list_iter_l = wP_List.begin();
                 for(int k=0;k < wP_List.size() - 1;list_iter_l++,k++);
                 wPObj = *list_iter_l;
-                cacheClear(wPObj.index);
+                cacheClear(wPObj.hash);
                 wP_List.erase(list_iter_l);
             }
             wP wPObjNew;
             wPObjNew.webPageName = text;
-            wPObjNew.index = ind;
+            wPObjNew.hash = hash;
             wP_List.push_front(wPObjNew);
-            fileWrite(ind,text);
+            fileWrite(hash,text);
             cout << "File got using GET from server -- Send file to client" << endl;
             ret = 1;
         }       
@@ -154,11 +180,7 @@ int main(int argc, char const *argv[])
     for(int k = 0;k<i; k++){
         cout << "Enter links :";
         cin >>  links;
-        ret = lRU(links,count);
-        if(ret != 0){
-            cout << "Webpage html saved as " << fileNames[count] << endl;
-            count ++;
-        }
+        lRU(links);
     }
     //fileWrite("One.html");
 
