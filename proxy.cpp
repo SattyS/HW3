@@ -42,10 +42,10 @@ typedef struct sockaddr SA;
 std::list<wP> wP_List;
 
 
-void cacheClear(string hash){
+void cacheClear(string hash, string wp){
     //std::string f = fileNames[ind]; 
     remove(hash.c_str());
-    cout << "File Deleted " << hash << endl; 
+    cout << "File Deleted " << hash << " " << wp << endl; 
 }
 
 string checkHead(string hash, string fileName){
@@ -88,7 +88,7 @@ string checkHead(string hash, string fileName){
         lMD = "";
     }
     pclose(stream);
-    cacheClear(hash);
+    cacheClear(hash, "Temp");
     fclose(ostream);
     return lMD;
 }
@@ -198,7 +198,7 @@ int lRU(string text){
                 std::list<wP>::iterator list_iter_l = wP_List.begin();
                 for(int k=0;k < wP_List.size() - 1;list_iter_l++,k++);
                 wPObj = *list_iter_l;
-                cacheClear(wPObj.hash);
+                cacheClear(wPObj.hash,wPObj.webPageName);
                 wP_List.erase(list_iter_l);
             }
             wP wPObjNew;
