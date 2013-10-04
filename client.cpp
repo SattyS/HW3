@@ -92,11 +92,17 @@ int main(int argc, char const *argv[])
         FILE *ostream = fopen(fileName.c_str(),"w");
         int i =0;
         int fputsVal;
-        char ack[] = {"OK"};
+        int p = 0;
 
         while((nread = read(sockfd,buf,512)) > 0){
             cout << buf << endl;
             cout << strlen(buf) << endl;
+            //404
+            if((strlen(buf) == 18) && (strcmp(buf,"404 Page Not Found") == 0)){
+                cout << "404 Page Not Found" << endl;
+                p = 1;
+                break;
+            }
             if((strlen(buf) == 0) || ((strlen(buf) == 4) && (strcmp(buf," END") == 0))){
                 break;
             }
@@ -106,7 +112,11 @@ int main(int argc, char const *argv[])
             //write(sockfd,(void *) &ack,2);
             i++;
         }
-        cout << "File written";
+        if(p == 1){
+            remove(fileName.c_str());
+        }else{
+            cout << "File written" << endl;
+        }
         fclose(ostream);
         //FD_SET(STDIN_FILENO, &master);
     }
