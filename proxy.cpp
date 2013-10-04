@@ -73,7 +73,12 @@ string checkHead(string hash, string fileName){
        while(!feof(ostream)){
             if((read = getline(&line, &len, ostream)) != -1){
                 string tempLine = line;
+                std::size_t vPos = tempLine.find("200 OK");
                 std::size_t pos = tempLine.find("Last-Modified:");
+                if(vPos != std::string::npos){
+                    lMD = "OK";
+                    found = true;
+                }
                 if(pos != std::string::npos){
                     lMD = tempLine.substr(14);
                     found = true;
@@ -126,8 +131,9 @@ int fileWrite(string hash,string fileName){
         return 1;
     */
     const int MAX_BUFFER = 2048;
-    string cmd="GET HTTP/1.0 "; //http://www.ece.tamu.edu/~reddy/ee602_08.html";
+    string cmd="GET "; //http://www.ece.tamu.edu/~reddy/ee602_08.html";
     cmd.append(fileName);
+    cmd.append(" HTTP/1.0");
     char buffer[MAX_BUFFER];
     FILE *stream = popen(cmd.c_str(), "r");
     FILE *ostream = fopen(hash.c_str(),"w");
@@ -136,10 +142,10 @@ int fileWrite(string hash,string fileName){
        {
             if (fgets(buffer, MAX_BUFFER, stream) != NULL)
             {
-               fprintf(ostream, buffer);
+               fputs(buffer, ostream);
             }
        }
-       fprintf(ostream,"\n END");
+       fputs("\n END", ostream);
        pclose(stream);
        fclose(ostream);
     }
@@ -152,13 +158,23 @@ int lRU(string text){
     string hash;
     hash = hash_str(text.c_str());
     if(wP_List.empty()){
-        wPObj.webPageName = text;
-        wPObj.hash = hash;
-        fileWrite(hash,text);
-        cout << "File got using GET from server -- Send file to client" << endl;
-        wPObj.last_modified = checkHead(hash,text);
-        wP_List.push_front(wPObj);
-        ret  = 1;
+        string retS = checkHead(hash,text);
+        if(retS.compare("") == 0){
+            //fileWrite(hash,"404 Page Not Found");
+            ret = 2;
+        }else{
+            if(retS.compare("OK") == 0){
+                wPObj.last_modified = "";
+            }else{
+                 wPObj.last_modified = retS;
+            }
+            wPObj.webPageName = text;
+            wPObj.hash = hash;
+            fileWrite(hash,text);
+            cout << "File got using GET from server -- Send file to client" << endl;
+            wP_List.push_front(wPObj);
+            ret  = 1;
+        }
     }else{
         std::list<wP>::iterator list_iter = wP_List.begin();
         for(;list_iter != wP_List.end(); list_iter++)
@@ -172,7 +188,7 @@ int lRU(string text){
         }
         if(found){
             cout << "File already in cache -- Send file to client" << endl;
-            if(wPObj.last_modified.compare("") == 0){
+            if(wPObj.last_modified.compare("OK") == 0){
                 fileWrite(hash,text);
                 cout << "Last modified date can't be determined from HEAD" << endl;
                 cout << "File got using GET from server -- Send file to client" << endl;
@@ -194,21 +210,33 @@ int lRU(string text){
             }
         }else{
             // GET
-            if(wP_List.size() == MAX_SIZE){
-                std::list<wP>::iterator list_iter_l = wP_List.begin();
-                for(int k=0;k < wP_List.size() - 1;list_iter_l++,k++);
-                wPObj = *list_iter_l;
-                cacheClear(wPObj.hash,wPObj.webPageName);
-                wP_List.erase(list_iter_l);
+            string retS = checkHead(hash,text);
+            if(retS.compare("") == 0){
+                //fileWrite(hash,"404 Page Not Found");
+                ret = 2;
+            }else{
+                string temp;
+                if(retS.compare("OK") == 0){
+                    temp = "";
+                }else{
+                     temp = retS;
+                }
+                if(wP_List.size() == MAX_SIZE){
+                    std::list<wP>::iterator list_iter_l = wP_List.begin();
+                    for(int k=0;k < wP_List.size() - 1;list_iter_l++,k++);
+                    wPObj = *list_iter_l;
+                    cacheClear(wPObj.hash,wPObj.webPageName);
+                    wP_List.erase(list_iter_l);
+                }
+                wP wPObjNew;
+                wPObjNew.webPageName = text;
+                wPObjNew.hash = hash;
+                wPObjNew.last_modified = temp;
+                wP_List.push_front(wPObjNew);
+                fileWrite(hash,text);
+                cout << "File got using GET from server -- Send file to client" << endl;
+                ret = 1;
             }
-            wP wPObjNew;
-            wPObjNew.webPageName = text;
-            wPObjNew.hash = hash;
-            wPObjNew.last_modified = checkHead(hash,text);
-            wP_List.push_front(wPObjNew);
-            fileWrite(hash,text);
-            cout << "File got using GET from server -- Send file to client" << endl;
-            ret = 1;
         }       
     }
     return ret;
@@ -223,6 +251,7 @@ void sendFile(string file, int connfd){
 
     while(!feof(ostream)){
         fgets(buf,512,ostream);
+        //sleep(1);
         write(connfd,(void *) &buf,512);
         bzero(buf,512);
     }
@@ -233,18 +262,6 @@ void sendFile(string file, int connfd){
 int main(int argc, char const *argv[])
 {
     
-    /*
-    int i;
-    int count = 0, ret;
-    string links;
-
-    cin >> i;
-    for(int k = 0;k<i; k++){
-        cout << "Enter links :";
-        cin >>  links;
-        lRU(links);
-    }
-    */
     int serverSockFd, connfd, len;
     //int ret;
     int clientStatus = 0;
@@ -338,59 +355,21 @@ int main(int argc, char const *argv[])
                             //string tempBuf = buf;
                             //string webPage = tempBuf.substr(11);
                             //cout << webPage << endl;
-                            lRU(buf);
-                            string fileHash = hash_str(buf);
-                            sendFile(fileHash,connfd);
+                            int lRURet;
+                            lRURet = lRU(buf);
+                            if(lRURet == 2){
+                                char pBuf [] = "404 Page Not Found";
+                                write(connfd,(void *) &pBuf,512);
+                            }else{
+                                string fileHash = hash_str(buf);
+                                sendFile(fileHash,connfd);
+                            }
                             pClientCount++;
                             
                         }
                           
                     }
-                }/*else{
-                    // handle data from a client
-                    if ((readbytes = read(i,(SM *) &clientMessage,sizeof(clientMessage))) <= 0) {
-                        // got error or connection closed by client
-                        if (readbytes == 0) {
-                            // connection closed
-                            printf("selectserver: socket %d hung up\n", i);
-                        } else {
-                            perror("recv");
-                        }
-                        clientMessage = constructServerPacket(i,clientMessage,6);
-                        clearClient(i);
-                        close(i);
-                        FD_CLR(i, &master); // remove from master set
-                        broadcast(fdmax,master,serverSockFd,i,clientMessage);
-                    }
-                    else{
-                        //send data to clients
-                        clientAttribute[1] = clientMessage.attribute[0];
-                        clientHeader.vrsn = 3;
-                        clientHeader.type = '3';
-                        clientHeader.length = 2;
-                        clientAttribute[0].type = 2;
-                        clientAttribute[1].type = 4;
-
-                        for(s=0; s<pclientCount; s++){
-                            
-                            if(clients[s].active == 1){
-
-                                if(clients[s].fd == i){
-
-                                    strcpy(tempc, clients[s].username);
-                                    strcpy(clientAttribute[0].payload, tempc);
-                                    clientAttribute[0].length = strlen(clientAttribute[0].payload);
-                                    clientAttribute[1].length = strlen(clientAttribute[1].payload);
-                                    clientMessage.attribute[0] = clientAttribute[0];
-                                    clientMessage.attribute[1] = clientAttribute[1];
-                                    clientMessage.header = clientHeader;
-                                }   
-                            }
-                            
-                        } 
-                        broadcast(fdmax,master,serverSockFd,i,clientMessage);   
-                    }
-                }*/
+                }
         }
     }
 }
