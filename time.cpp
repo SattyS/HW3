@@ -74,6 +74,24 @@ int isBig(string a, string b){
 		return -1;
 	}
 }
+string dateformat(string a){
+	a = a.substr(5,a.length());
+	a = a.substr(0,a.length() - 4);
+	string day = a.substr(0,2);
+	string month = a.substr(3,3);
+	string year = a.substr(7,4);
+	int im;
+	string m[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+	for(int i=0; i <12; i++){
+		if(month.compare(m[i]) == 0){
+			im = i + 1;
+			break;
+		}
+	}
+	month = inttostring(im);
+	a.replace(3,3,month);
+	return a;
+}
 int main(){
 	string a = "Mon, 06 Oct 2013 17:37:49 GMT";
 	a = a.substr(5,a.length());
