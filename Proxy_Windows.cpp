@@ -65,13 +65,14 @@ string getIP(string clientMessage){
 }
 string getMessage(string clientMessage){
 	std::size_t http = clientMessage.find("HTTP/1.0");
-    string getMessage = fileName.substr(0,http + 8);
+    string getMessage = clientMessage.substr(0,http + 8);
     cout << "GET message " << getMessage << endl;
+	return getMessage;
 }
-string getLastModifiedAndExpire(string filename){
+string* getLastModifiedAndExpire(string filename){
 	
-	string ret[2];
-	string message = getMessage(fileName);
+	string *ret = new string[2];
+	string message = getMessage(filename);
 	string woGet = message.substr(3);
 	char buffer[200];
 	strcpy(buffer,"HEAD");
@@ -97,7 +98,7 @@ string getLastModifiedAndExpire(string filename){
     bzero(&servaddr,sizeof(servaddr));
     servaddr.sin_family=AF_INET;
     //cout << "IP " << ip << endl;
-    servaddr.sin_addr.s_addr=inet_addr(getIP(fileName).c_str());
+    servaddr.sin_addr.s_addr=inet_addr(getIP(filename).c_str());
     servaddr.sin_port=htons(80);
 
     /* Connect to the server by calling the function connect */
@@ -131,22 +132,31 @@ string getLastModifiedAndExpire(string filename){
         char lmDate[50];
         char exDate[50];
         int k=0;
+	cout << endl << "Server Message " << endl << serverMessage;
         std::size_t expirePos = serverMessage.find("Expires:");
         std::size_t lmPos = serverMessage.find("Last-Modified:");
         for (unsigned i=lmPos + 15; (i<serverMessage.length()) && (serverMessage.at(i) != '\n'); ++i)
-  		{
+ 		{
     		lmDate[k] = serverMessage.at(i);
+		//cout << lmDate[k] << endl;
     		k++;
   		}
+		lmDate[k] = '\0';
   		k = 0;
   		for (unsigned i=expirePos + 9; (i<serverMessage.length()) && (serverMessage.at(i) != '\n'); ++i)
   		{
     		exDate[k] = serverMessage.at(i);
+		//cout << exDate[k] << endl;
     		k++;
   		}
+		exDate[k] = '\0';
+		//cout << lmDate << endl;
+		//cout << exDate << endl;
   		ret[0] = lmDate;
   		ret[1] = exDate;
-  		cout << ret[0] << " " << ret[1] << endl;
+  		//cout << ret[0] << ret[1] << endl;
+		cout << ret[0] << endl;
+		cout << ret[1] << endl;
   		return ret;
         //string eTime = serverMessage.substr(expirePos,)
     }
@@ -298,7 +308,7 @@ int lRU(string text, int connfd){
     bool found = false;
     wP wPObj;
     string hash;
-    hash = hash_str(getAddress(text));    
+    hash = hash_str(getAddress(text).c_str());    
     getLastModifiedAndExpire(text);
     if(wP_List.empty()){
         //string retS = checkHead(hash,text);
@@ -337,7 +347,7 @@ int lRU(string text, int connfd){
                 cout << "Last modified date can't be determined from HEAD" << endl;
                 cout << "File got using GET from server -- Send file to client" << endl;
             }else{
-                std::string lmLocal = checkHead(hash,text);
+                std::string lmLocal = "OK"; //checkHead(hash,text);
                 if(wPObj.last_modified.compare(lmLocal) != 0){
                     fileWrite(hash,text);
                     cout << "Last modified date has changed" << endl;
@@ -354,7 +364,7 @@ int lRU(string text, int connfd){
             }
         }else{
             // GET
-            //string retS = checkHead(hash,text);
+            string retS; //= checkHead(hash,text);
             retS = "OK";
             if(retS.compare("") == 0){
                 //fileWrite(hash,"404 Page Not Found");
@@ -539,4 +549,5 @@ int main(int argc, char const *argv[])
     close(serverSockFd);
     return 0;
 }
+
 
