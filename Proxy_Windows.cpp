@@ -13,6 +13,8 @@
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <ctime>
+#include <sstream>
 #define MAX_SIZE 2
 
 
@@ -33,6 +35,7 @@ struct webPage {
     string hash;
     string webPageType;
     string last_modified;
+    string expireTime;
 
 };
 
@@ -40,7 +43,94 @@ typedef struct webPage wP;
 typedef struct sockaddr SA; 
 
 std::list<wP> wP_List;
-
+string dateformat(string a){
+	a = a.substr(5,a.length());
+	a = a.substr(0,a.length() - 4);
+	string day = a.substr(0,2);
+	string month = a.substr(3,3);
+	string year = a.substr(7,4);
+	int im;
+	string m[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+	for(int i=0; i <12; i++){
+		if(month.compare(m[i]) == 0){
+			im = i + 1;
+			break;
+		}
+	}
+	month = inttostring(im);
+	a.replace(3,3,month);
+	return a;
+}
+string inttostring (int a){
+	std::stringstream ss;
+	ss << a;
+	std::string s(ss.str());
+	return s;
+}
+const std::string currentDateTime() {
+    time_t     now = time(0);
+    struct tm  tstruct;
+    char       buf[80];
+    tstruct = *localtime(&now);
+    strftime(buf, sizeof(buf), "%d %m %Y %X", &tstruct);
+    string sBuf = buf;
+	string hour = sBuf.substr(11,2);
+	int h = atoi(hour.c_str());
+	h = (h + 5) % 24;
+	hour = inttostring(h);
+	sBuf.replace(11,2,hour);
+    return sBuf;
+}
+int isBig(string a, string b){
+	
+	int fday = atoi(a.substr(0,2).c_str());
+	int fmonth = atoi(a.substr(3,2).c_str());
+	int fyear = atoi(a.substr(6,4).c_str());
+	string ftime = a.substr(11,a.length() - 1);
+	
+	int sday = atoi(b.substr(0,2).c_str());
+	int smonth = atoi(b.substr(3,2).c_str());
+	int syear = atoi(b.substr(6,4).c_str());
+	string stime = b.substr(11,a.length() - 1);
+	
+	string dum = "";
+	ftime.replace(2,1,dum);
+	ftime.replace(4,1,dum);
+	stime.replace(2,1,dum);
+	stime.replace(4,1,dum);
+	
+	int fint = atoi(ftime.c_str());
+	int sint = atoi(stime.c_str());
+	
+	cout << ftime << endl;
+	cout << stime << endl;
+	
+	if(fyear == syear){
+		if(fmonth == smonth){
+			if(fday == sday){
+				if(fint == sint){
+					return 0;
+				}else if(fint < sint){
+					return -1;
+				}else{
+					return 1;
+				}
+			}else if(fday < sday){
+				return -1;
+			}else{
+				return 1;
+			}
+		}else if(fmonth < smonth){
+			return -1;
+		}else{
+			return 1;
+		}		
+	}else if(fyear < syear){
+		return 1;
+	}else{
+		return -1;
+	}
+}
 
 void cacheClear(string hash, string wp){
     //std::string f = fileNames[ind]; 
@@ -309,26 +399,16 @@ int lRU(string text, int connfd){
     wP wPObj;
     string hash;
     hash = hash_str(getAddress(text).c_str());    
-    getLastModifiedAndExpire(text);
     if(wP_List.empty()){
-        //string retS = checkHead(hash,text);
-        string retS = "OK";
-        if(retS.compare("") == 0){
-            //fileWrite(hash,"404 Page Not Found");
-            ret = 2;
-        }else{
-            if(retS.compare("OK") == 0){
-                wPObj.last_modified = "";
-            }else{
-                 wPObj.last_modified = retS;
-            }
-            wPObj.webPageName = text;
-            wPObj.hash = hash;
-            fileWrite(hash,text);
-            cout << "File got using GET from server -- Send file to client" << endl;
-            wP_List.push_front(wPObj);
-            ret  = 1;
-        }
+        string *retS = getLastModifiedAndExpire(text);
+        wPObj.last_modified = retS[0];
+        wPObj.expireTime = retS[1];
+        wPObj.webPageName = text;
+        wPObj.hash = hash;
+        fileWrite(hash,text);
+        cout << "File got using GET from server -- Send file to client" << endl;
+        wP_List.push_front(wPObj);
+        ret  = 1;
     }else{
         std::list<wP>::iterator list_iter = wP_List.begin();
         for(;list_iter != wP_List.end(); list_iter++)
@@ -342,56 +422,53 @@ int lRU(string text, int connfd){
         }
         if(found){
             cout << "File already in cache -- Send file to client" << endl;
-            if(wPObj.last_modified.compare("OK") == 0){
-                fileWrite(hash,text);
-                cout << "Last modified date can't be determined from HEAD" << endl;
-                cout << "File got using GET from server -- Send file to client" << endl;
+            string expTime = wPObj.expireTime;
+            string curTime = currentDateTime();
+            cout << "Current Time" << curTime;
+            expTime = dateFormat(expTime);
+            cout << "Expire time" << expTime;
+            int result;
+            result = isBig(curTime,expTime);
+            if(result == -1){
+            	cout << "Expire Time > Current Time - Send old file to client" << endl;
             }else{
-                std::string lmLocal = "OK"; //checkHead(hash,text);
-                if(wPObj.last_modified.compare(lmLocal) != 0){
-                    fileWrite(hash,text);
-                    cout << "Last modified date has changed" << endl;
+            	cout << "Current Time > Expire Time" << endl;
+            	string *retS = getLastModifiedAndExpire(text);
+            	wPObj.expireTime = retS[1];
+            	string lmDate = retS[0];
+            	int result = isBig(dateFormat(lmDate), dateFormat(wPObj.last_modified));
+            	if(result == 0){
+            		cout << "Last modified date is unchanged - Send old file to client" << endl;
+            	}else{
+            		cout << "Last modified date has changed" << endl;
                     cout << "File got using GET from server -- Send file to client" << endl;
-                }else{
-                    cout << "Last modified date has not changed - Send old file to client" << endl;
-                }
+            		wPObj.last_modified = retS[0];
+            		fileWrite(hash,text);
+            	}
             }
             if(i != 0){
-                // Check Timestamp and update (HEAD)
                 wP_List.erase(list_iter);
                 wP_List.push_front(wPObj);
                 ret = 0;
             }
         }else{
-            // GET
-            string retS; //= checkHead(hash,text);
-            retS = "OK";
-            if(retS.compare("") == 0){
-                //fileWrite(hash,"404 Page Not Found");
-                ret = 2;
-            }else{
-                string temp;
-                if(retS.compare("OK") == 0){
-                    temp = "";
-                }else{
-                     temp = retS;
-                }
-                if(wP_List.size() == MAX_SIZE){
-                    std::list<wP>::iterator list_iter_l = wP_List.begin();
-                    for(int k=0;k < wP_List.size() - 1;list_iter_l++,k++);
-                    wPObj = *list_iter_l;
-                    cacheClear(wPObj.hash,wPObj.webPageName);
-                    wP_List.erase(list_iter_l);
-                }
-                wP wPObjNew;
-                wPObjNew.webPageName = text;
-                wPObjNew.hash = hash;
-                wPObjNew.last_modified = temp;
-                wP_List.push_front(wPObjNew);
-                fileWrite(hash,text);
-                cout << "File got using GET from server -- Send file to client" << endl;
-                ret = 1;
+            string *retS = getLastModifiedAndExpire(text);
+            if(wP_List.size() == MAX_SIZE){
+                std::list<wP>::iterator list_iter_l = wP_List.begin();
+                for(int k=0;k < wP_List.size() - 1;list_iter_l++,k++);
+                wPObj = *list_iter_l;
+                cacheClear(wPObj.hash,wPObj.webPageName);
+                wP_List.erase(list_iter_l);
             }
+            wP wPObjNew;
+            wPObjNew.webPageName = text;
+            wPObjNew.hash = hash;
+            wPObjNew.last_modified = retS[0];
+            wPObjNew.expire_Time = retS[1];
+            wP_List.push_front(wPObjNew);
+            fileWrite(hash,text);
+            cout << "File got using GET from server -- Send file to client" << endl;
+            ret = 1;
         }       
     }
     return ret;
@@ -549,5 +626,4 @@ int main(int argc, char const *argv[])
     close(serverSockFd);
     return 0;
 }
-
 
